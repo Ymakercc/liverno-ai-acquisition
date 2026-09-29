@@ -3,7 +3,8 @@
 from sqlalchemy import func, select
 
 from app.api.deps import get_search_provider
-from app.models import Enterprise, EnterpriseDiscoverySource, SearchResult
+from app.generators.base import GeneratedChannel, GeneratedQuery, GeneratedStrategy
+from app.models import Enterprise, EnterpriseDiscoverySource, SearchResult, StrategyQuery
 from app.providers.base import ProviderSearchResult
 from app.services.discovery_service import extract_main_domain
 from tests.conftest import profile_payload
@@ -130,3 +131,63 @@ def test_run_discovery_deduplicates_enterprise_by_domain(client, db_session):
     assert db_session.scalar(select(func.count()).select_from(Enterprise)) == 1
     assert db_session.scalar(select(func.count()).select_from(SearchResult)) == 1
     assert db_session.scalar(select(func.count()).select_from(EnterpriseDiscoverySource)) == 1
+
+
+def test_enterprise_country_stays_empty_and_query_country_remains_traceable(
+    client, db_session, fake_generator
+):
+    fake_generator.strategy = GeneratedStrategy(
+        channels=[
+            GeneratedChannel(
+                channel="google",
+                enabled=True,
+                target_countries=["IT"],
+                strategy_summary="Italian PCB search context",
+                queries=[
+                    GeneratedQuery(
+                        query_text="PCB manufacturer Italy terminal connector",
+                        country_code="IT",
+                        language="en",
+                        enabled=True,
+                        sort_order=0,
+                    )
+                ],
+            )
+        ]
+    )
+    provider = FakeSearchProvider()
+    from app.main import app
+
+    app.dependency_overrides[get_search_provider] = lambda: provider
+    strategy = _create_active_strategy(client)
+
+    response = client.post(
+        "/liver_api/v1/search-discovery/run",
+        json={
+            "strategy_id": strategy["id"],
+            "max_queries": 1,
+            "results_per_query": 1,
+            "enterprise_target": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    row = db_session.execute(
+        select(
+            Enterprise.country.label("enterprise_country"),
+            SearchResult.country_code.label("search_context_country"),
+            StrategyQuery.country_code.label("strategy_query_country"),
+            EnterpriseDiscoverySource.query,
+            SearchResult.query_text,
+        )
+        .select_from(EnterpriseDiscoverySource)
+        .join(Enterprise, Enterprise.id == EnterpriseDiscoverySource.enterprise_id)
+        .join(SearchResult, SearchResult.id == EnterpriseDiscoverySource.search_result_id)
+        .join(StrategyQuery, StrategyQuery.id == SearchResult.query_id)
+    ).one()
+
+    assert row.enterprise_country == ""
+    assert row.search_context_country == "IT"
+    assert row.strategy_query_country == "IT"
+    assert row.query == "PCB manufacturer Italy terminal connector"
+    assert row.query_text == "PCB manufacturer Italy terminal connector"

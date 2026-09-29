@@ -154,7 +154,6 @@ def _get_or_create_enterprise(
     domain: str,
     title: str,
     url: str,
-    country: str | None,
 ) -> tuple[Enterprise, bool]:
     existing = db.scalars(select(Enterprise).where(Enterprise.domain == domain)).first()
     if existing:
@@ -165,7 +164,7 @@ def _get_or_create_enterprise(
         normalized_name=normalize_company_name(title, domain),
         domain=domain,
         website=url,
-        country=country or "",
+        country="",
         industry="",
     )
     db.add(enterprise)
@@ -282,7 +281,6 @@ def run_discovery(
                     domain=domain,
                     title=item.title,
                     url=item.url,
-                    country=query.country_code,
                 )
                 if enterprise_created:
                     stats["enterprise_inserted_count"] += 1
