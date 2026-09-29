@@ -85,10 +85,6 @@ async function handleReanalyze(): Promise<void> {
   }
 }
 
-function goTask(taskId: string): void {
-  router.push(`/acquisition-tasks/${taskId}`)
-}
-
 function goList(): void {
   router.push('/companies')
 }
@@ -302,7 +298,7 @@ onBeforeUnmount(() => controller?.abort())
           </h3>
           <span class="company-detail__section-sub">
             共 {{ company.discovery_sources?.length ?? 0 }} 条记录 ·
-            来自 {{ company.discovery_summary.task_count }} 个获客任务（企业实体全局唯一）
+            来自 {{ company.discovery_summary.strategy_count }} 个搜索策略（企业实体全局唯一）
           </span>
         </header>
 
@@ -319,26 +315,23 @@ onBeforeUnmount(() => controller?.abort())
           </template>
 
           <el-table-column
-            label="获客任务"
+            label="搜索策略"
             min-width="230"
           >
             <template #default="{ row }">
-              <span
-                class="source-link"
-                @click="goTask(row.task_id)"
-              >{{ row.task_name }}</span>
+              <span class="source-link">{{ row.strategy_code || '-' }}</span>
               <div class="source-sub num">
-                {{ row.task_id }}
+                {{ row.strategy_id }}
               </div>
             </template>
           </el-table-column>
           <el-table-column
-            label="搜索策略"
-            width="180"
+            label="版本 / Provider"
+            width="160"
           >
             <template #default="{ row }">
-              <span class="num">{{ row.strategy_id }}</span>
-              <span class="source-sub num"> · v{{ row.strategy_version }}</span>
+              <span class="num">v{{ row.strategy_version }}</span>
+              <span class="source-sub num"> · {{ row.provider }}</span>
             </template>
           </el-table-column>
           <el-table-column

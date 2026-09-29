@@ -60,23 +60,27 @@ export interface EnterpriseProfileAnalysis {
 export interface EnterpriseDiscoverySource {
   id: string
   enterprise_id: string
-  task_id: string
-  /** derived / 只读：后端 JOIN AcquisitionTask 返回 */
-  task_name: string
+  /** Mock compatibility only; the B2 real API does not expose AcquisitionTask. */
+  task_id?: string
+  task_name?: string
   strategy_id: string
+  /** derived / 只读：后端 JOIN SearchStrategy 返回 */
+  strategy_code: string
   /** 发现时的策略版本快照 */
   strategy_version: number
   channel: string
   query: string
+  provider: string
+  result_url: string
   discovered_at: string
 }
 
 /** 列表用的发现来源摘要，避免列表响应携带完整来源数组 */
 export interface DiscoverySummary {
-  task_count: number
+  strategy_count: number
   channels: string[]
-  latest_task_id: string
-  latest_task_name: string
+  latest_strategy_id: string
+  latest_strategy_code: string
   latest_discovered_at: string
 }
 

@@ -178,10 +178,6 @@ function goDetail(company: Enterprise): void {
   })
 }
 
-function goTask(taskId: string): void {
-  if (taskId) router.push(`/acquisition-tasks/${taskId}`)
-}
-
 /**
  * 初始化画像语境
  * 1. 带 task_id 进入 → 取任务的画像并锁定
@@ -482,19 +478,18 @@ onBeforeUnmount(() => {
           </el-table-column>
 
           <el-table-column
-            label="来源任务"
+            label="来源策略"
             min-width="220"
           >
             <template #default="{ row }">
               <div class="source-cell">
+                <span class="source-cell__link">
+                  {{ asCompany(row).discovery_summary.latest_strategy_code || '-' }}
+                </span>
                 <span
-                  class="source-cell__link"
-                  @click="goTask(asCompany(row).discovery_summary.latest_task_id)"
-                >{{ asCompany(row).discovery_summary.latest_task_name || '-' }}</span>
-                <span
-                  v-if="asCompany(row).discovery_summary.task_count > 1"
+                  v-if="asCompany(row).discovery_summary.strategy_count > 1"
                   class="source-cell__count"
-                >等 {{ asCompany(row).discovery_summary.task_count }} 个任务发现</span>
+                >等 {{ asCompany(row).discovery_summary.strategy_count }} 个策略发现</span>
               </div>
             </template>
           </el-table-column>

@@ -564,9 +564,12 @@ const enterprises: Enterprise[] = seeds.map((seed, index) => {
       task_id: taskId,
       task_name: meta?.task_name ?? taskId,
       strategy_id: meta?.strategy_id ?? '-',
+      strategy_code: meta?.strategy_id ?? '-',
       strategy_version: meta?.strategy_version ?? 1,
       channel,
       query,
+      provider: 'mock',
+      result_url: `https://www.${seed.domain}`,
       discovered_at: `2026-09-${String(seed.day).padStart(2, '0')} 0${8 + (sourceIndex % 2)}:4${sourceIndex}:00`
     })
   })
@@ -592,10 +595,10 @@ const enterprises: Enterprise[] = seeds.map((seed, index) => {
     company_type: seed.company_type,
     email_domain: seed.domain,
     discovery_summary: {
-      task_count: 0,
+      strategy_count: 0,
       channels: [],
-      latest_task_id: '',
-      latest_task_name: '',
+      latest_strategy_id: '',
+      latest_strategy_code: '',
       latest_discovered_at: ''
     },
     first_discovered_at: `2026-09-${String(seed.day).padStart(2, '0')} 08:40:00`,
@@ -647,10 +650,10 @@ function summaryOf(enterpriseId: string): DiscoverySummary {
   const list = sourcesOf(enterpriseId)
   const latest = [...list].sort((a, b) => b.discovered_at.localeCompare(a.discovered_at))[0]
   return {
-    task_count: new Set(list.map((item) => item.task_id)).size,
+    strategy_count: new Set(list.map((item) => item.strategy_id)).size,
     channels: Array.from(new Set(list.map((item) => item.channel))),
-    latest_task_id: latest?.task_id ?? '',
-    latest_task_name: latest?.task_name ?? '',
+    latest_strategy_id: latest?.strategy_id ?? '',
+    latest_strategy_code: latest?.strategy_code ?? '',
     latest_discovered_at: latest?.discovered_at ?? ''
   }
 }
