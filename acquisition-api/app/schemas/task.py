@@ -30,6 +30,24 @@ class TaskSearchResultOut(BaseModel):
     observed_at: datetime
 
 
+class TaskQueryExecutionOut(BaseModel):
+    id: str
+    strategy_query_id: str
+    query_text: str
+    page: int
+    requested_limit: int
+    provider_returned_count: int
+    search_results_observed_count: int
+    valid_domain_count: int
+    new_enterprises_count: int
+    duplicate_enterprises_count: int
+    status: str
+    retry_count: int
+    failure_reason: str | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+
+
 class AcquisitionTaskOut(BaseModel):
     id: str
     task_name: str
@@ -53,6 +71,7 @@ class AcquisitionTaskOut(BaseModel):
     query_count: int = 0
     target_countries: list[str] = Field(default_factory=list)
     search_results: list[TaskSearchResultOut] = Field(default_factory=list)
+    query_executions: list[TaskQueryExecutionOut] = Field(default_factory=list)
 
     failure_reason: str | None = None
     created_at: datetime

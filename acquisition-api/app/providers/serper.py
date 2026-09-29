@@ -25,8 +25,9 @@ class SerperSearchProvider:
         country_code: str | None,
         language: str | None,
         limit: int,
+        page: int,
     ) -> list[ProviderSearchResult]:
-        payload: dict[str, object] = {"q": query, "num": limit}
+        payload: dict[str, object] = {"q": query, "num": limit, "page": page}
         if country_code:
             payload["gl"] = country_code.lower()
         if language:

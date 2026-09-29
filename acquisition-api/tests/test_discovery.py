@@ -1,11 +1,14 @@
 """Session B1 discovery pipeline tests."""
 
+from types import SimpleNamespace
+
 from sqlalchemy import func, select
 
 from app.api.deps import get_search_provider
 from app.generators.base import GeneratedChannel, GeneratedQuery, GeneratedStrategy
 from app.models import Enterprise, EnterpriseDiscoverySource, SearchResult, StrategyQuery
 from app.providers.base import ProviderSearchResult
+from app.providers.serper import SerperSearchProvider
 from app.services.discovery_service import extract_main_domain
 from tests.conftest import profile_payload
 
@@ -16,13 +19,14 @@ class FakeSearchProvider:
     def __init__(self):
         self.calls = []
 
-    def search(self, query, *, country_code, language, limit):
+    def search(self, query, *, country_code, language, limit, page):
         self.calls.append(
             {
                 "query": query,
                 "country_code": country_code,
                 "language": language,
                 "limit": limit,
+                "page": page,
             }
         )
         return [
@@ -48,6 +52,42 @@ class FakeSearchProvider:
                 raw={"position": 3},
             ),
         ][:limit]
+
+
+def test_serper_provider_sends_page(monkeypatch):
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"organic": []}
+
+    def fake_post(url, *, headers, json, timeout):
+        captured.update({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        return Response()
+
+    monkeypatch.setattr(
+        "app.providers.serper.get_settings",
+        lambda: SimpleNamespace(
+            serper_api_key="test-key",
+            serper_base_url="https://google.serper.dev",
+            serper_timeout_seconds=10,
+        ),
+    )
+    monkeypatch.setattr("app.providers.serper.httpx.post", fake_post)
+
+    provider = SerperSearchProvider()
+    provider.search("test query", country_code="DE", language="DE", limit=5, page=2)
+
+    assert captured["json"] == {
+        "q": "test query",
+        "num": 5,
+        "page": 2,
+        "gl": "de",
+        "hl": "de",
+    }
 
 
 def test_extract_main_domain_uses_public_suffix_list():
@@ -100,6 +140,7 @@ def test_run_discovery_persists_results_enterprises_and_sources(client, db_sessi
     assert result["discovery_source_inserted_count"] == 2
 
     assert provider.calls[0]["limit"] == 3
+    assert provider.calls[0]["page"] == 1
     assert db_session.scalar(select(func.count()).select_from(SearchResult)) == 3
     assert db_session.scalar(select(func.count()).select_from(Enterprise)) == 2
     assert db_session.scalar(select(func.count()).select_from(EnterpriseDiscoverySource)) == 2

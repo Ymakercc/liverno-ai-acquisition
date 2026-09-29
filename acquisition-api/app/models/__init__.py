@@ -6,11 +6,17 @@ from app.models.strategy import (
     StrategyChannel,
     StrategyQuery,
 )
-from app.models.task import AcquisitionTask, AcquisitionTaskSearchResult
+from app.models.task import (
+    AcquisitionTask,
+    AcquisitionTaskQueryExecution,
+    AcquisitionTaskSearchResult,
+    StrategyQueryExecutionState,
+)
 
 __all__ = [
     "CustomerProfile",
     "AcquisitionTask",
+    "AcquisitionTaskQueryExecution",
     "AcquisitionTaskSearchResult",
     "Enterprise",
     "EnterpriseDiscoverySource",
@@ -19,4 +25,5 @@ __all__ = [
     "SearchResult",
     "StrategyChannel",
     "StrategyQuery",
+    "StrategyQueryExecutionState",
 ]

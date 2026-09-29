@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 from app.core.errors import ConflictError, NotFoundError, ValidationError
 from app.models import (
     AcquisitionTask,
+    AcquisitionTaskQueryExecution,
     AcquisitionTaskSearchResult,
     CustomerProfile,
     SearchStrategy,
     SearchStrategyVersion,
     SearchResult,
     StrategyChannel,
+    StrategyQuery,
 )
 from app.providers.base import SearchProvider
 from app.schemas.task import AcquisitionTaskCreate, AcquisitionTaskStatsOut
@@ -68,11 +70,28 @@ def _task_snapshots(db: Session, task: AcquisitionTask) -> tuple[list[dict], lis
     if version is None:
         return [], []
 
-    selected = discovery_service._enabled_queries(db, version.id)[: task.max_queries]
+    execution_rows = db.execute(
+        select(AcquisitionTaskQueryExecution, StrategyQuery, StrategyChannel)
+        .join(
+            StrategyQuery,
+            StrategyQuery.id == AcquisitionTaskQueryExecution.strategy_query_id,
+        )
+        .join(StrategyChannel, StrategyChannel.id == StrategyQuery.channel_id)
+        .where(AcquisitionTaskQueryExecution.acquisition_task_id == task.id)
+        .order_by(AcquisitionTaskQueryExecution.started_at, StrategyQuery.id)
+    ).all()
+    selected = (
+        [(channel, query, execution) for execution, query, channel in execution_rows]
+        if execution_rows
+        else [
+            (channel, query, None)
+            for channel, query in discovery_service._enabled_queries(db, version.id)[: task.max_queries]
+        ]
+    )
     snapshots: list[dict] = []
     countries: set[str] = set()
     by_channel: dict[uuid.UUID, dict] = {}
-    for channel, query in selected:
+    for channel, query, execution in selected:
         snapshot = by_channel.get(channel.id)
         if snapshot is None:
             snapshot = {
@@ -85,6 +104,8 @@ def _task_snapshots(db: Session, task: AcquisitionTask) -> tuple[list[dict], lis
             snapshots.append(snapshot)
             countries.update(channel.target_countries or [])
         snapshot["queries"].append(query.query_text)
+        if execution is not None:
+            snapshot["raw_discovered_count"] += execution.provider_returned_count
     return snapshots, sorted(countries)
 
 
@@ -109,6 +130,56 @@ def _task_search_results(db: Session, task_id: uuid.UUID) -> list[dict]:
     ]
 
 
+def _task_query_executions(db: Session, task_id: uuid.UUID) -> list[dict]:
+    rows = db.execute(
+        select(AcquisitionTaskQueryExecution, StrategyQuery)
+        .join(
+            StrategyQuery,
+            StrategyQuery.id == AcquisitionTaskQueryExecution.strategy_query_id,
+        )
+        .where(AcquisitionTaskQueryExecution.acquisition_task_id == task_id)
+        .order_by(AcquisitionTaskQueryExecution.started_at, AcquisitionTaskQueryExecution.id)
+    ).all()
+    return [
+        {
+            "id": str(execution.id),
+            "strategy_query_id": str(execution.strategy_query_id),
+            "query_text": query.query_text,
+            "page": execution.page,
+            "requested_limit": execution.requested_limit,
+            "provider_returned_count": execution.provider_returned_count,
+            "search_results_observed_count": execution.search_results_observed_count,
+            "valid_domain_count": execution.valid_domain_count,
+            "new_enterprises_count": execution.new_enterprises_count,
+            "duplicate_enterprises_count": execution.duplicate_enterprises_count,
+            "status": execution.status,
+            "retry_count": execution.retry_count,
+            "failure_reason": execution.failure_reason,
+            "started_at": execution.started_at,
+            "finished_at": execution.finished_at,
+        }
+        for execution, query in rows
+    ]
+
+
+def _task_execution_totals(db: Session, task_id: uuid.UUID) -> dict[str, int]:
+    executions = db.scalars(
+        select(AcquisitionTaskQueryExecution).where(
+            AcquisitionTaskQueryExecution.acquisition_task_id == task_id,
+            AcquisitionTaskQueryExecution.status == "completed",
+        )
+    ).all()
+    return {
+        "queries_executed": len(executions),
+        "search_results_count": sum(row.search_results_observed_count for row in executions),
+        "valid_domains_count": sum(row.valid_domain_count for row in executions),
+        "new_enterprises_count": sum(row.new_enterprises_count for row in executions),
+        "duplicate_enterprises_count": sum(
+            row.duplicate_enterprises_count for row in executions
+        ),
+    }
+
+
 def build_task_view(db: Session, task: AcquisitionTask, *, include_results: bool = False) -> dict:
     strategy = db.get(SearchStrategy, task.strategy_id)
     profile = db.get(CustomerProfile, strategy.profile_id) if strategy else None
@@ -118,15 +189,6 @@ def build_task_view(db: Session, task: AcquisitionTask, *, include_results: bool
         .select_from(AcquisitionTaskSearchResult)
         .where(AcquisitionTaskSearchResult.acquisition_task_id == task.id)
     ) or 0
-    if task.queries_executed:
-        remaining = task.search_results_count
-        for snapshot in snapshots:
-            query_share = len(snapshot["queries"])
-            snapshot["raw_discovered_count"] = min(
-                remaining, query_share * task.results_per_query
-            )
-            remaining -= snapshot["raw_discovered_count"]
-
     return {
         "id": str(task.id),
         "task_name": task.task_name,
@@ -148,6 +210,7 @@ def build_task_view(db: Session, task: AcquisitionTask, *, include_results: bool
         "query_count": sum(len(snapshot["queries"]) for snapshot in snapshots),
         "target_countries": countries,
         "search_results": _task_search_results(db, task.id) if include_results else [],
+        "query_executions": _task_query_executions(db, task.id) if include_results else [],
         "failure_reason": task.failure_reason,
         "created_at": task.created_at,
         "started_at": task.started_at,
@@ -245,7 +308,7 @@ def run_task(db: Session, task_id: str, provider: SearchProvider) -> dict:
     db.commit()
 
     try:
-        result = discovery_service.run_discovery(
+        discovery_service.run_discovery(
             db,
             provider=provider,
             strategy_id=str(strategy.id),
@@ -264,16 +327,15 @@ def run_task(db: Session, task_id: str, provider: SearchProvider) -> dict:
         db.refresh(failed)
         return build_task_view(db, failed, include_results=True)
 
+    totals = _task_execution_totals(db, task.id)
     completed = _load_task(db, task_id)
     completed.status = "completed"
     completed.finished_at = datetime.now(timezone.utc)
-    completed.queries_executed = len(result["query_texts"])
-    completed.search_results_count = (
-        result["search_result_inserted_count"] + result["search_result_existing_count"]
-    )
-    completed.valid_domains_count = result["valid_domain_count"]
-    completed.new_enterprises_count = result["enterprise_inserted_count"]
-    completed.duplicate_enterprises_count = result["enterprise_duplicate_count"]
+    completed.queries_executed = totals["queries_executed"]
+    completed.search_results_count = totals["search_results_count"]
+    completed.valid_domains_count = totals["valid_domains_count"]
+    completed.new_enterprises_count = totals["new_enterprises_count"]
+    completed.duplicate_enterprises_count = totals["duplicate_enterprises_count"]
     db.commit()
     db.refresh(completed)
     return build_task_view(db, completed, include_results=True)

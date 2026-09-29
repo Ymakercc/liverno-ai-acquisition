@@ -23,5 +23,6 @@ class SearchProvider(Protocol):
         country_code: str | None,
         language: str | None,
         limit: int,
+        page: int,
     ) -> list[ProviderSearchResult]:
         """Run one search query and return normalized organic results."""

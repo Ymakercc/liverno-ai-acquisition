@@ -91,3 +91,87 @@ class AcquisitionTaskSearchResult(Base):
         Index("ix_task_search_result_task", "acquisition_task_id", "observed_at"),
         Index("ix_task_search_result_result", "search_result_id"),
     )
+
+
+class StrategyQueryExecutionState(TimestampMixin, Base):
+    __tablename__ = "strategy_query_execution_state"
+
+    strategy_query_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("strategy_query.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    next_page: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    consecutive_low_yield_runs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    query = relationship("StrategyQuery")
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active','cooldown','exhausted')",
+            name="ck_query_execution_state_status",
+        ),
+        CheckConstraint("next_page >= 1", name="ck_query_execution_state_next_page"),
+    )
+
+
+class AcquisitionTaskQueryExecution(TimestampMixin, Base):
+    __tablename__ = "acquisition_task_query_execution"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    acquisition_task_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("acquisition_task.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    strategy_query_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("strategy_query.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    page: Mapped[int] = mapped_column(Integer, nullable=False)
+    requested_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    provider_returned_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    search_results_observed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    valid_domain_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    new_enterprises_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duplicate_enterprises_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="running")
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    acquisition_task = relationship("AcquisitionTask")
+    strategy_query = relationship("StrategyQuery")
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running','completed','failed')",
+            name="ck_task_query_execution_status",
+        ),
+        CheckConstraint("page >= 1", name="ck_task_query_execution_page"),
+        CheckConstraint("retry_count BETWEEN 0 AND 1", name="ck_task_query_execution_retry_count"),
+        UniqueConstraint(
+            "strategy_query_id",
+            "page",
+            name="uq_task_query_execution_query_page",
+        ),
+        Index(
+            "ix_task_query_execution_task",
+            "acquisition_task_id",
+            "started_at",
+        ),
+        Index(
+            "ix_task_query_execution_query",
+            "strategy_query_id",
+            "started_at",
+        ),
+    )
