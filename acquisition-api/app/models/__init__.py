@@ -1,3 +1,4 @@
+from app.models.enterprise import Enterprise, EnterpriseDiscoverySource, SearchResult
 from app.models.profile import CustomerProfile
 from app.models.strategy import (
     SearchStrategy,
@@ -8,8 +9,11 @@ from app.models.strategy import (
 
 __all__ = [
     "CustomerProfile",
+    "Enterprise",
+    "EnterpriseDiscoverySource",
     "SearchStrategy",
     "SearchStrategyVersion",
+    "SearchResult",
     "StrategyChannel",
     "StrategyQuery",
 ]

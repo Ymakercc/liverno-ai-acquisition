@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     deepseek_model: str = "deepseek-chat"
     deepseek_timeout_seconds: float = 180.0
 
+    serper_api_key: str = ""
+    serper_base_url: str = "https://google.serper.dev"
+    serper_timeout_seconds: float = 30.0
+
     @property
     def database_url(self) -> URL:
         """URL.create 会自行转义密码中的特殊字符。"""

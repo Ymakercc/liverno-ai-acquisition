@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import profiles, strategies
+from app.api.v1 import discovery, profiles, strategies
 from app.config import get_settings
 from app.core.errors import AppError
 
@@ -48,3 +48,4 @@ def health() -> dict:
 
 app.include_router(profiles.router, prefix=settings.api_prefix)
 app.include_router(strategies.router, prefix=settings.api_prefix)
+app.include_router(discovery.router, prefix=settings.api_prefix)
