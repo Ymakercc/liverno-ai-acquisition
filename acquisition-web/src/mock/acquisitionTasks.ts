@@ -76,6 +76,14 @@ function syncAggregates(task: AcquisitionTask): void {
   // 任务【内部】去重 + AI 相关性判断；与 Dashboard 的全局口径不同
   task.deduplicated_count = Math.round(task.raw_discovered_count * DEDUPE_RATE)
   task.relevant_count = Math.round(task.raw_discovered_count * RELEVANT_RATE)
+  task.queries_executed = units.filter((unit) => unit.status === 'completed').length
+  task.search_results_count = task.raw_discovered_count
+  task.valid_domains_count = task.deduplicated_count
+  task.new_enterprises_count = task.relevant_count
+  task.duplicate_enterprises_count = Math.max(
+    task.valid_domains_count - task.new_enterprises_count,
+    0
+  )
 
   task.channel_snapshots.forEach((snapshot) => {
     snapshot.raw_discovered_count = units
@@ -184,7 +192,7 @@ const seeds: Seed[] = [
     profile_id: 'PRF-0005',
     strategy_id: 'STG-0005',
     strategy_version: 2,
-    status: 'paused',
+    status: 'pending',
     channels: [
       ch('google', ['"system integrator" industrial automation United States'], ['US', 'CA']),
       ch('company_site', ['site:.com industrial automation system integrator'], ['US'])
@@ -281,7 +289,7 @@ const seeds: Seed[] = [
     profile_id: 'PRF-0011',
     strategy_id: 'STG-0011',
     strategy_version: 2,
-    status: 'paused',
+    status: 'pending',
     channels: [ch('google', ['"medical device" manufacturer France Spain'], ['FR', 'ES'])],
     raw: 64,
     day: 12
@@ -357,7 +365,7 @@ function applySeedUnits(task: AcquisitionTask, status: TaskStatus, targetRaw: nu
 
   let completedCount = 0
   if (status === 'completed') completedCount = units.length
-  else if (status === 'running' || status === 'paused') {
+  else if (status === 'running') {
     completedCount = Math.max(1, Math.floor(units.length * 0.6))
   } else if (status === 'failed') completedCount = Math.max(0, units.length - 1)
 
@@ -387,9 +395,18 @@ const dataset: AcquisitionTask[] = seeds.map((seed, index) => {
     task_name: seed.task_name,
     profile_id: seed.profile_id,
     strategy_id: seed.strategy_id,
+    strategy_code: seed.strategy_id,
     strategy_version: seed.strategy_version,
     profile_name: '',
     status: seed.status,
+    max_queries: 3,
+    results_per_query: 10,
+    enterprise_target: 30,
+    queries_executed: 0,
+    search_results_count: 0,
+    valid_domains_count: 0,
+    new_enterprises_count: 0,
+    duplicate_enterprises_count: 0,
     channel_snapshots: snapshots,
     query_count: seed.channels.reduce((sum, item) => sum + item.queries.length, 0),
     target_countries: countries,
@@ -478,7 +495,6 @@ function runTask(task: AcquisitionTask): void {
  * 并发锁：同一 strategy_id + strategy_version 同时只允许一个任务占用执行资源
  *
  * running → 占用
- * paused  → 仍视为占用（后续需要继续执行）
  * completed / failed → 释放
  */
 function findBusyTask(task: AcquisitionTask): AcquisitionTask | undefined {
@@ -487,7 +503,7 @@ function findBusyTask(task: AcquisitionTask): AcquisitionTask | undefined {
       item.id !== task.id &&
       item.strategy_id === task.strategy_id &&
       item.strategy_version === task.strategy_version &&
-      (item.status === 'running' || item.status === 'paused')
+      item.status === 'running'
   )
 }
 
@@ -589,11 +605,20 @@ export async function createTaskMock(payload: TaskCreatePayload): Promise<Acquis
   const created: AcquisitionTask = {
     id: nextId(),
     task_name: payload.task_name,
-    profile_id: payload.profile_id,
+    profile_id: strategy.profile_id,
     strategy_id: payload.strategy_id,
-    strategy_version: payload.strategy_version,
+    strategy_code: strategy.code,
+    strategy_version: strategy.version,
     profile_name: '',
     status: 'pending',
+    max_queries: payload.max_queries,
+    results_per_query: payload.results_per_query,
+    enterprise_target: payload.enterprise_target,
+    queries_executed: 0,
+    search_results_count: 0,
+    valid_domains_count: 0,
+    new_enterprises_count: 0,
+    duplicate_enterprises_count: 0,
     channel_snapshots: snapshots,
     query_count: snapshots.reduce((sum, item) => sum + item.queries.length, 0),
     target_countries: Array.from(new Set(snapshots.flatMap((item) => item.target_countries))),
@@ -610,14 +635,14 @@ export async function createTaskMock(payload: TaskCreatePayload): Promise<Acquis
 }
 
 /**
- * 启动 / 继续：pending / paused → running
- * 暂停后再启动只执行剩余 pending 单元，已完成结果保留，不整体重跑。
+ * 启动：pending → running。
  */
 export function startTaskMock(id: string): Promise<AcquisitionTask> {
   const target = dataset.find((item) => item.id === id)
   if (!target) return Promise.reject(new Error('获客任务不存在'))
   if (target.status === 'running') return Promise.reject(new Error('任务已在执行中'))
   if (target.status === 'completed') return Promise.reject(new Error('任务已完成，无需重复执行'))
+  if (target.status === 'failed') return Promise.reject(new Error('失败任务不可重复执行'))
 
   // 同一策略版本的并发占用检查：后端必须独立保证，不能只依赖前端按钮
   const conflict = assertStrategyIdle(target)
@@ -658,22 +683,6 @@ export function retryTaskMock(id: string): Promise<AcquisitionTask> {
   target.updated_at = now()
   runTask(target)
 
-  return delay(withProfileMeta(structuredClone(target)))
-}
-
-/**
- * 暂停：仅执行中的任务可暂停
- * 不再调度 pending 单元；已完成单元的结果全部保留，
- * paused 状态仍占用该 strategy_id + strategy_version 的并发额度。
- */
-export function pauseTaskMock(id: string): Promise<AcquisitionTask> {
-  const target = dataset.find((item) => item.id === id)
-  if (!target) return Promise.reject(new Error('获客任务不存在'))
-  if (target.status !== 'running') return Promise.reject(new Error('仅执行中的任务可以暂停'))
-
-  clearTimers(id)
-  target.status = 'paused'
-  target.updated_at = now()
   return delay(withProfileMeta(structuredClone(target)))
 }
 

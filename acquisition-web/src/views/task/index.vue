@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TaskFormDrawer from './components/TaskFormDrawer.vue'
-import { fetchTaskStats, fetchTasks, pauseTask, retryTask, startTask } from '@/api/task'
+import { fetchTaskStats, fetchTasks, runTask } from '@/api/task'
 import { CHANNEL_OPTIONS, TASK_STATUS_OPTIONS, labelOf } from '@/mock/dict'
 import type { AcquisitionTask, TaskQuery, TaskStatus } from '@/types/task'
 
@@ -154,42 +154,14 @@ function goDetail(task: AcquisitionTask): void {
   router.push(`/acquisition-tasks/${task.id}`)
 }
 
-async function handleStart(task: AcquisitionTask): Promise<void> {
+async function handleRun(task: AcquisitionTask): Promise<void> {
   try {
-    await startTask(task.id)
-    ElMessage.success('任务已启动')
+    const result = await runTask(task.id)
+    if (result.status === 'failed') ElMessage.error(result.failure_reason || '任务执行失败')
+    else ElMessage.success('任务执行完成')
     refreshAll()
   } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : '启动失败')
-  }
-}
-
-async function handleRetry(task: AcquisitionTask): Promise<void> {
-  try {
-    await retryTask(task.id)
-    ElMessage.success('任务已重新执行')
-    refreshAll()
-  } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : '重试失败')
-  }
-}
-
-async function handlePause(task: AcquisitionTask): Promise<void> {
-  try {
-    await ElMessageBox.confirm(
-      `确定暂停任务「${task.task_name}」吗？已发现的企业结果会保留。`,
-      '暂停任务',
-      { confirmButtonText: '暂停', cancelButtonText: '取消', type: 'warning' }
-    )
-  } catch {
-    return
-  }
-  try {
-    await pauseTask(task.id)
-    ElMessage.success('任务已暂停')
-    refreshAll()
-  } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : '暂停失败')
+    ElMessage.error(err instanceof Error ? err.message : '执行失败')
   }
 }
 
@@ -234,7 +206,7 @@ onBeforeUnmount(() => {
           获客任务
         </h2>
         <p class="task-page__desc">
-          按搜索策略执行企业发现，完成标准化去重与 AI 相关性判断，产出候选企业。
+          按搜索策略执行真实企业发现，结果经标准化与全局去重后进入候选企业库。
         </p>
         <div class="task-page__stats">
           <span class="task-page__stat">
@@ -377,7 +349,7 @@ onBeforeUnmount(() => {
             width="150"
           >
             <template #default="{ row }">
-              <span class="num">{{ asTask(row).strategy_id }}</span>
+              <span class="num">{{ asTask(row).strategy_code }}</span>
               <span class="task-cell__version num"> · v{{ asTask(row).strategy_version }}</span>
             </template>
           </el-table-column>
@@ -422,32 +394,32 @@ onBeforeUnmount(() => {
           </el-table-column>
 
           <el-table-column
-            label="原始发现"
+            label="搜索结果"
             width="100"
             align="right"
           >
             <template #default="{ row }">
-              <span class="num result-num is-raw">{{ asTask(row).raw_discovered_count }}</span>
+              <span class="num result-num is-raw">{{ asTask(row).search_results_count }}</span>
             </template>
           </el-table-column>
 
           <el-table-column
-            label="去重后"
+            label="有效域名"
             width="100"
             align="right"
           >
             <template #default="{ row }">
-              <span class="num result-num">{{ asTask(row).deduplicated_count }}</span>
+              <span class="num result-num">{{ asTask(row).valid_domains_count }}</span>
             </template>
           </el-table-column>
 
           <el-table-column
-            label="AI 有效"
+            label="新增企业"
             width="110"
             align="right"
           >
             <template #default="{ row }">
-              <span class="num result-num is-relevant">{{ asTask(row).relevant_count }}</span>
+              <span class="num result-num is-relevant">{{ asTask(row).new_enterprises_count }}</span>
             </template>
           </el-table-column>
 
@@ -477,30 +449,13 @@ onBeforeUnmount(() => {
             <template #default="{ row }">
               <div class="row-actions">
                 <el-button
-                  v-if="asTask(row).status === 'pending' || asTask(row).status === 'paused'"
+                  v-if="asTask(row).status === 'pending'"
                   size="small"
                   type="primary"
                   plain
-                  @click="handleStart(asTask(row))"
+                  @click="handleRun(asTask(row))"
                 >
                   启动任务
-                </el-button>
-                <el-button
-                  v-else-if="asTask(row).status === 'failed'"
-                  size="small"
-                  type="primary"
-                  plain
-                  @click="handleRetry(asTask(row))"
-                >
-                  重试
-                </el-button>
-                <el-button
-                  v-else-if="asTask(row).status === 'running'"
-                  size="small"
-                  plain
-                  @click="handlePause(asTask(row))"
-                >
-                  暂停
                 </el-button>
                 <el-button
                   v-else
@@ -808,12 +763,6 @@ onBeforeUnmount(() => {
   color: var(--color-danger);
   background: #fdeced;
   border-color: #f7c9cb;
-}
-
-.chip.is-paused {
-  color: var(--color-warning);
-  background: #fef6e7;
-  border-color: #f7dfb0;
 }
 
 .muted-time {

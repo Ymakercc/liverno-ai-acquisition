@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import companies, discovery, profiles, strategies
+from app.api.v1 import companies, discovery, profiles, strategies, tasks
 from app.config import get_settings
 from app.core.errors import AppError
 
@@ -50,3 +50,4 @@ app.include_router(profiles.router, prefix=settings.api_prefix)
 app.include_router(strategies.router, prefix=settings.api_prefix)
 app.include_router(discovery.router, prefix=settings.api_prefix)
 app.include_router(companies.router, prefix=settings.api_prefix)
+app.include_router(tasks.router, prefix=settings.api_prefix)

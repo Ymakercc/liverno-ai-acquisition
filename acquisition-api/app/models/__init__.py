@@ -6,9 +6,12 @@ from app.models.strategy import (
     StrategyChannel,
     StrategyQuery,
 )
+from app.models.task import AcquisitionTask, AcquisitionTaskSearchResult
 
 __all__ = [
     "CustomerProfile",
+    "AcquisitionTask",
+    "AcquisitionTaskSearchResult",
     "Enterprise",
     "EnterpriseDiscoverySource",
     "SearchStrategy",

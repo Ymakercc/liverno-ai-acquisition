@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchTask, pauseTask, retryTask, startTask } from '@/api/task'
+import { fetchTask, runTask } from '@/api/task'
 import { CHANNEL_OPTIONS, COUNTRY_OPTIONS, TASK_STATUS_OPTIONS, labelOf, labelsOf } from '@/mock/dict'
 import type { AcquisitionTask } from '@/types/task'
 
@@ -59,63 +59,26 @@ const statusLabel = computed<string>(() =>
   task.value ? labelOf(TASK_STATUS_OPTIONS, task.value.status) : ''
 )
 
-/** 去重率与有效率：帮助判断这次获客跑得怎么样 */
-const dedupeRate = computed<string>(() => {
-  if (!task.value?.raw_discovered_count) return '-'
-  return `${((task.value.deduplicated_count / task.value.raw_discovered_count) * 100).toFixed(1)}%`
+const validDomainRate = computed<string>(() => {
+  if (!task.value?.search_results_count) return '-'
+  return `${((task.value.valid_domains_count / task.value.search_results_count) * 100).toFixed(1)}%`
 })
 
-const relevantRate = computed<string>(() => {
-  if (!task.value?.raw_discovered_count) return '-'
-  return `${((task.value.relevant_count / task.value.raw_discovered_count) * 100).toFixed(1)}%`
+const newEnterpriseRate = computed<string>(() => {
+  if (!task.value?.valid_domains_count) return '-'
+  return `${((task.value.new_enterprises_count / task.value.valid_domains_count) * 100).toFixed(1)}%`
 })
 
-async function handleStart(): Promise<void> {
+async function handleRun(): Promise<void> {
   if (!task.value) return
   acting.value = true
   try {
-    await startTask(task.value.id)
-    ElMessage.success('任务已启动')
+    const result = await runTask(task.value.id)
+    if (result.status === 'failed') ElMessage.error(result.failure_reason || '任务执行失败')
+    else ElMessage.success('任务执行完成')
     loadTask()
   } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : '启动失败')
-  } finally {
-    acting.value = false
-  }
-}
-
-async function handleRetry(): Promise<void> {
-  if (!task.value) return
-  acting.value = true
-  try {
-    await retryTask(task.value.id)
-    ElMessage.success('任务已重新执行')
-    loadTask()
-  } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : '重试失败')
-  } finally {
-    acting.value = false
-  }
-}
-
-async function handlePause(): Promise<void> {
-  if (!task.value) return
-  try {
-    await ElMessageBox.confirm(
-      `确定暂停任务「${task.value.task_name}」吗？已发现的企业结果会保留。`,
-      '暂停任务',
-      { confirmButtonText: '暂停', cancelButtonText: '取消', type: 'warning' }
-    )
-  } catch {
-    return
-  }
-  acting.value = true
-  try {
-    await pauseTask(task.value.id)
-    ElMessage.success('任务已暂停')
-    loadTask()
-  } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : '暂停失败')
+    ElMessage.error(err instanceof Error ? err.message : '执行失败')
   } finally {
     acting.value = false
   }
@@ -187,38 +150,23 @@ onBeforeUnmount(() => {
             <span class="task-detail__divider">·</span>
             <span>{{ task.profile_name }}</span>
             <span class="task-detail__divider">·</span>
-            <span class="num">{{ task.strategy_id }} v{{ task.strategy_version }}</span>
+            <span class="num">{{ task.strategy_code }} v{{ task.strategy_version }}</span>
           </div>
         </div>
 
         <div class="task-detail__actions">
           <el-button
-            v-if="task.status === 'pending' || task.status === 'paused'"
+            v-if="task.status === 'pending'"
             type="primary"
             :loading="acting"
-            @click="handleStart"
+            @click="handleRun"
           >
             启动任务
           </el-button>
           <el-button
-            v-else-if="task.status === 'failed'"
-            type="primary"
-            :loading="acting"
-            @click="handleRetry"
-          >
-            重试
-          </el-button>
-          <el-button
-            v-else-if="task.status === 'running'"
-            :loading="acting"
-            @click="handlePause"
-          >
-            暂停
-          </el-button>
-          <el-button
             type="primary"
             plain
-            :disabled="!task.relevant_count"
+            :disabled="!task.valid_domains_count"
             @click="goCompanies"
           >
             查看候选企业
@@ -252,36 +200,35 @@ onBeforeUnmount(() => {
         <div class="result-grid">
           <div class="result-card">
             <div class="result-card__label">
-              原始发现企业
+              SearchResult
             </div>
             <div class="result-card__value num">
-              {{ task.raw_discovered_count }}
+              {{ task.search_results_count }}
             </div>
             <div class="result-card__hint">
-              各渠道原始发现，未去重，不计入 300 目标
+              本次任务实际处理并持久化的搜索结果
             </div>
           </div>
           <div class="result-card">
             <div class="result-card__label">
-              去重后企业
+              有效域名
             </div>
             <div class="result-card__value num">
-              {{ task.deduplicated_count }}
+              {{ task.valid_domains_count }}
             </div>
             <div class="result-card__hint">
-              去重率 {{ dedupeRate }}
+              有效域名率 {{ validDomainRate }}
             </div>
           </div>
           <div class="result-card is-primary">
             <div class="result-card__label">
-              AI 有效企业
-              <span class="result-card__ai">AI</span>
+              新增 Enterprise
             </div>
             <div class="result-card__value num">
-              {{ task.relevant_count }}
+              {{ task.new_enterprises_count }}
             </div>
             <div class="result-card__hint">
-              is_relevant = true，有效率 {{ relevantRate }}
+              新增率 {{ newEnterpriseRate }}，重复 {{ task.duplicate_enterprises_count }} 家
             </div>
           </div>
         </div>
@@ -337,6 +284,15 @@ onBeforeUnmount(() => {
             <el-descriptions-item label="当前状态">
               {{ statusLabel }}
             </el-descriptions-item>
+            <el-descriptions-item label="执行规模">
+              {{ task.max_queries }} Query × {{ task.results_per_query }} 结果，目标 {{ task.enterprise_target }} 家
+            </el-descriptions-item>
+            <el-descriptions-item label="实际执行 Query">
+              {{ task.queries_executed }}
+            </el-descriptions-item>
+            <el-descriptions-item label="重复 Enterprise">
+              {{ task.duplicate_enterprises_count }}
+            </el-descriptions-item>
             <el-descriptions-item label="创建时间">
               {{ task.created_at }}
             </el-descriptions-item>
@@ -367,6 +323,29 @@ onBeforeUnmount(() => {
           </el-button>
         </section>
       </div>
+
+      <section class="task-detail__search-results app-card">
+        <header class="task-detail__section-head">
+          <h3 class="task-detail__section-title">
+            SearchResult 观察记录
+          </h3>
+          <span class="task-detail__section-sub">
+            共 {{ task.search_results?.length ?? 0 }} 条，本任务重复命中也保留关联
+          </span>
+        </header>
+        <el-table :data="task.search_results ?? []" stripe>
+          <el-table-column prop="rank" label="排名" width="70" />
+          <el-table-column prop="title" label="标题" min-width="260" show-overflow-tooltip />
+          <el-table-column prop="result_domain" label="主域名" min-width="180" />
+          <el-table-column prop="query_text" label="StrategyQuery" min-width="280" show-overflow-tooltip />
+          <el-table-column label="结果链接" width="100">
+            <template #default="{ row }">
+              <a :href="row.url" target="_blank" rel="noopener" class="task-detail__link">打开</a>
+            </template>
+          </el-table-column>
+          <el-table-column prop="observed_at" label="观察时间" width="190" />
+        </el-table>
+      </section>
     </template>
   </div>
 </template>
@@ -426,7 +405,8 @@ onBeforeUnmount(() => {
 /* ---------- 区块 ---------- */
 .task-detail__result,
 .task-detail__channels,
-.task-detail__timeline {
+.task-detail__timeline,
+.task-detail__search-results {
   padding: 18px var(--space-xl) var(--space-xl);
 }
 
@@ -617,9 +597,4 @@ onBeforeUnmount(() => {
   border-color: #f7c9cb;
 }
 
-.chip.is-paused {
-  color: var(--color-warning);
-  background: #fef6e7;
-  border-color: #f7dfb0;
-}
 </style>

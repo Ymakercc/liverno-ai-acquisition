@@ -10,7 +10,7 @@
 import type { PageQuery } from './common'
 
 /** P0 简单状态，不做复杂状态机 */
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused'
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 /** 执行单元状态 */
 export type TaskQueryUnitStatus = 'pending' | 'running' | 'completed' | 'failed'
@@ -60,6 +60,17 @@ export interface TaskChannelSnapshot {
   raw_discovered_count: number
 }
 
+/** 本次任务观察到的 SearchResult；同一结果可同时属于多个任务。 */
+export interface TaskSearchResult {
+  id: string
+  title: string
+  url: string
+  result_domain?: string
+  query_text: string
+  rank: number
+  observed_at: string
+}
+
 /** 获客任务实体 */
 export interface AcquisitionTask {
   id: string
@@ -68,6 +79,8 @@ export interface AcquisitionTask {
   /** 关联真源 */
   profile_id: string
   strategy_id: string
+  /** derived / 只读：SearchStrategy.code */
+  strategy_code: string
   /** 创建时的策略版本快照，历史任务永不变更 */
   strategy_version: number
 
@@ -76,12 +89,24 @@ export interface AcquisitionTask {
 
   status: TaskStatus
 
+  max_queries: number
+  results_per_query: number
+  enterprise_target: number
+
+  queries_executed: number
+  search_results_count: number
+  valid_domains_count: number
+  new_enterprises_count: number
+  duplicate_enterprises_count: number
+
   /** 执行渠道快照 */
   channel_snapshots: TaskChannelSnapshot[]
   /** Query 总数（快照） */
   query_count: number
   /** 目标国家（快照，各渠道去重合并） */
   target_countries: string[]
+  /** 详情返回：由 acquisition_task_search_result 关联读取。 */
+  search_results?: TaskSearchResult[]
 
   /* -------- 获客结果：任务级指标 --------
    *
@@ -131,9 +156,10 @@ export interface AcquisitionTask {
 /** 创建任务提交体：最少字段，其余由后端按策略快照填充 */
 export interface TaskCreatePayload {
   task_name: string
-  profile_id: string
   strategy_id: string
-  strategy_version: number
+  max_queries: number
+  results_per_query: number
+  enterprise_target: number
 }
 
 /** 列表查询参数 */

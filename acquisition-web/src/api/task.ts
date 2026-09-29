@@ -8,9 +8,7 @@
  *   GET  /liver_api/v1/acquisition-tasks
  *   POST /liver_api/v1/acquisition-tasks
  *   GET  /liver_api/v1/acquisition-tasks/:id
- *   POST /liver_api/v1/acquisition-tasks/:id/start
- *   POST /liver_api/v1/acquisition-tasks/:id/retry
- *   POST /liver_api/v1/acquisition-tasks/:id/pause
+ *   POST /liver_api/v1/acquisition-tasks/:id/run
  *   GET  /liver_api/v1/acquisition-tasks/stats
  */
 import { request } from './request'
@@ -19,8 +17,6 @@ import {
   getTaskMock,
   getTaskStatsMock,
   listTasksMock,
-  pauseTaskMock,
-  retryTaskMock,
   startTaskMock
 } from '@/mock/acquisitionTasks'
 import type { PageResult } from '@/types/common'
@@ -50,22 +46,10 @@ export function createTask(payload: TaskCreatePayload): Promise<AcquisitionTask>
   return request<AcquisitionTask>({ url: BASE, method: 'POST', data: payload })
 }
 
-/** 启动任务 */
-export function startTask(id: string): Promise<AcquisitionTask> {
+/** 同步执行一次真实企业发现 */
+export function runTask(id: string): Promise<AcquisitionTask> {
   if (USE_MOCK) return startTaskMock(id)
-  return request<AcquisitionTask>({ url: `${BASE}/${id}/start`, method: 'POST' })
-}
-
-/** 重试失败任务 */
-export function retryTask(id: string): Promise<AcquisitionTask> {
-  if (USE_MOCK) return retryTaskMock(id)
-  return request<AcquisitionTask>({ url: `${BASE}/${id}/retry`, method: 'POST' })
-}
-
-/** 暂停执行中的任务 */
-export function pauseTask(id: string): Promise<AcquisitionTask> {
-  if (USE_MOCK) return pauseTaskMock(id)
-  return request<AcquisitionTask>({ url: `${BASE}/${id}/pause`, method: 'POST' })
+  return request<AcquisitionTask>({ url: `${BASE}/${id}/run`, method: 'POST' })
 }
 
 /** 顶部统计；后端未提供时调用方可降级为列表计数 */

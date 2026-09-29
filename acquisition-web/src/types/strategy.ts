@@ -40,6 +40,8 @@ export interface ChannelSearchStrategy {
 /** 搜索策略实体 */
 export interface SearchStrategy {
   id: string
+  /** 稳定展示编号，如 STG-0002 */
+  code: string
   /**
    * 关联的客户画像 —— 唯一关联真源。
    * SearchStrategy 只维护 profile_id，不承担画像信息的一致性维护职责。

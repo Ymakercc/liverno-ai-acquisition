@@ -174,8 +174,7 @@ export const TASK_STATUS_OPTIONS: Option<TaskStatus>[] = [
   { label: '待执行', value: 'pending' },
   { label: '执行中', value: 'running' },
   { label: '已完成', value: 'completed' },
-  { label: '失败', value: 'failed' },
-  { label: '已暂停', value: 'paused' }
+  { label: '失败', value: 'failed' }
 ]
 
 /**

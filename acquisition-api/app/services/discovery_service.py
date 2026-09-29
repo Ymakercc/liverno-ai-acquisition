@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import NotFoundError, ValidationError
 from app.models import (
+    AcquisitionTaskSearchResult,
     Enterprise,
     EnterpriseDiscoverySource,
     SearchResult,
@@ -148,6 +149,29 @@ def _get_or_create_search_result(
     return row, True
 
 
+def _get_or_create_task_search_result(
+    db: Session,
+    *,
+    acquisition_task_id: uuid.UUID,
+    search_result: SearchResult,
+) -> tuple[AcquisitionTaskSearchResult, bool]:
+    existing = db.scalars(
+        select(AcquisitionTaskSearchResult)
+        .where(AcquisitionTaskSearchResult.acquisition_task_id == acquisition_task_id)
+        .where(AcquisitionTaskSearchResult.search_result_id == search_result.id)
+    ).first()
+    if existing:
+        return existing, False
+
+    link = AcquisitionTaskSearchResult(
+        acquisition_task_id=acquisition_task_id,
+        search_result_id=search_result.id,
+    )
+    db.add(link)
+    db.flush()
+    return link, True
+
+
 def _get_or_create_enterprise(
     db: Session,
     *,
@@ -214,6 +238,7 @@ def run_discovery(
     max_queries: int,
     results_per_query: int,
     enterprise_target: int,
+    acquisition_task_id: uuid.UUID | None = None,
 ) -> dict:
     strategy = _load_active_strategy(db, strategy_id)
     version = db.get(SearchStrategyVersion, strategy.current_version_id)
@@ -271,6 +296,13 @@ def run_discovery(
                     stats["search_result_inserted_count"] += 1
                 else:
                     stats["search_result_existing_count"] += 1
+
+                if acquisition_task_id is not None:
+                    _get_or_create_task_search_result(
+                        db,
+                        acquisition_task_id=acquisition_task_id,
+                        search_result=search_result,
+                    )
 
                 if not domain:
                     continue

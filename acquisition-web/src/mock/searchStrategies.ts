@@ -356,6 +356,7 @@ function buildSeedChannels(seed: Seed): ChannelSearchStrategy[] {
 
 const dataset: SearchStrategy[] = seeds.map((seed, index) => ({
   id: `STG-${String(index + 1).padStart(4, '0')}`,
+  code: `STG-${String(index + 1).padStart(4, '0')}`,
   profile_id: seed.profile_id,
   profile_name: seed.profile_name,
   status: seed.status,
@@ -453,6 +454,7 @@ export async function generateStrategyMock(profileId: string): Promise<SearchStr
 
   const created: SearchStrategy = {
     id: nextId(),
+    code: nextId(),
     profile_id: profile.id,
     profile_name: profile.profile_name,
     status: 'draft',

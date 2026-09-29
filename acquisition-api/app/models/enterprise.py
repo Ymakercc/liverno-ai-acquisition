@@ -66,6 +66,11 @@ class SearchResult(Base):
     )
 
     discovery_sources = relationship("EnterpriseDiscoverySource", back_populates="search_result")
+    task_links = relationship(
+        "AcquisitionTaskSearchResult",
+        back_populates="search_result",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         UniqueConstraint("provider", "query_id", "url", name="uq_search_result_provider_query_url"),

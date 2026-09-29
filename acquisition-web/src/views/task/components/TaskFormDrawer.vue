@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { createTask } from '@/api/task'
+import { fetchProfiles } from '@/api/profile'
 import { fetchStrategies, fetchStrategy } from '@/api/strategy'
 import { CHANNEL_OPTIONS, COUNTRY_OPTIONS, labelOf, labelsOf } from '@/mock/dict'
 import { canActivate } from '@/types/strategy'
+import type { CustomerProfile } from '@/types/profile'
 import type { SearchStrategy } from '@/types/strategy'
 
 const props = defineProps<{
@@ -22,13 +24,18 @@ const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const loading = ref(false)
 
-/** 可选策略：只取 active，未从策略页跳转时供用户选择 */
+const profileOptions = ref<CustomerProfile[]>([])
+/** 当前画像对应的 Active SearchStrategy。 */
 const strategyOptions = ref<SearchStrategy[]>([])
 const strategy = ref<SearchStrategy | null>(null)
 
-const form = ref<{ task_name: string; strategy_id: string }>({
+const form = ref({
   task_name: '',
-  strategy_id: ''
+  profile_id: '',
+  strategy_id: '',
+  max_queries: 3,
+  results_per_query: 10,
+  enterprise_target: 30
 })
 
 const rules: FormRules = {
@@ -36,6 +43,7 @@ const rules: FormRules = {
     { required: true, message: '请输入任务名称', trigger: 'blur' },
     { min: 2, max: 60, message: '长度在 2 到 60 个字符', trigger: 'blur' }
   ],
+  profile_id: [{ required: true, message: '请选择客户画像', trigger: 'change' }],
   strategy_id: [{ required: true, message: '请选择搜索策略', trigger: 'change' }]
 }
 
@@ -94,19 +102,45 @@ async function loadStrategy(id: string): Promise<void> {
   }
 }
 
+async function loadStrategies(profileId: string): Promise<void> {
+  strategyOptions.value = []
+  if (!profileId) return
+  const result = await fetchStrategies({
+    page: 1,
+    page_size: 100,
+    profile_id: profileId,
+    status: 'active'
+  })
+  strategyOptions.value = result.list
+}
+
 async function bootstrap(): Promise<void> {
-  form.value = { task_name: '', strategy_id: props.strategyId ?? '' }
+  form.value = {
+    task_name: '',
+    profile_id: '',
+    strategy_id: '',
+    max_queries: 3,
+    results_per_query: 10,
+    enterprise_target: 30
+  }
   strategy.value = null
+  strategyOptions.value = []
   formRef.value?.clearValidate()
 
   try {
-    const result = await fetchStrategies({ page: 1, page_size: 100, status: 'active' })
-    strategyOptions.value = result.list
+    const result = await fetchProfiles({ page: 1, page_size: 100, is_enabled: true })
+    profileOptions.value = result.list
   } catch {
-    strategyOptions.value = []
+    profileOptions.value = []
   }
 
-  if (props.strategyId) await loadStrategy(props.strategyId)
+  if (props.strategyId) {
+    const initial = await fetchStrategy(props.strategyId)
+    form.value.profile_id = initial.profile_id
+    form.value.strategy_id = initial.id
+    await loadStrategies(initial.profile_id)
+    await loadStrategy(initial.id)
+  }
 }
 
 watch(
@@ -118,6 +152,16 @@ watch(
 
 function handleStrategyChange(value: string): void {
   loadStrategy(value)
+}
+
+async function handleProfileChange(value: string): Promise<void> {
+  form.value.strategy_id = ''
+  strategy.value = null
+  try {
+    await loadStrategies(value)
+  } catch {
+    strategyOptions.value = []
+  }
 }
 
 function close(): void {
@@ -132,10 +176,10 @@ async function handleSubmit(): Promise<void> {
   try {
     const created = await createTask({
       task_name: form.value.task_name.trim(),
-      profile_id: strategy.value.profile_id,
       strategy_id: strategy.value.id,
-      // 固化创建时的策略版本，历史任务不受策略新版本影响
-      strategy_version: strategy.value.version
+      max_queries: form.value.max_queries,
+      results_per_query: form.value.results_per_query,
+      enterprise_target: form.value.enterprise_target
     })
     ElMessage.success('任务已创建，待执行')
     emit('created', created.id)
@@ -175,6 +219,26 @@ async function handleSubmit(): Promise<void> {
       </el-form-item>
 
       <el-form-item
+        label="客户画像"
+        prop="profile_id"
+      >
+        <el-select
+          v-model="form.profile_id"
+          placeholder="选择客户画像"
+          filterable
+          :disabled="!!strategyId"
+          @change="handleProfileChange"
+        >
+          <el-option
+            v-for="item in profileOptions"
+            :key="item.id"
+            :label="item.profile_name"
+            :value="item.id"
+          />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item
         label="搜索策略"
         prop="strategy_id"
       >
@@ -188,11 +252,23 @@ async function handleSubmit(): Promise<void> {
           <el-option
             v-for="item in strategyOptions"
             :key="item.id"
-            :label="`${item.profile_name}（${item.id} · v${item.version}）`"
+            :label="`${item.code}（v${item.version}）`"
             :value="item.id"
           />
         </el-select>
       </el-form-item>
+
+      <div class="task-form__params">
+        <el-form-item label="最大 Query 数">
+          <el-input-number v-model="form.max_queries" :min="1" :max="5" />
+        </el-form-item>
+        <el-form-item label="每 Query 结果数">
+          <el-input-number v-model="form.results_per_query" :min="1" :max="20" />
+        </el-form-item>
+        <el-form-item label="企业目标数">
+          <el-input-number v-model="form.enterprise_target" :min="1" :max="50" />
+        </el-form-item>
+      </div>
     </el-form>
 
     <el-skeleton
@@ -225,7 +301,7 @@ async function handleSubmit(): Promise<void> {
         </div>
         <div class="task-form__item">
           <span class="task-form__key">搜索策略</span>
-          <span>{{ strategy.id }}</span>
+          <span>{{ strategy.code }}</span>
         </div>
         <div class="task-form__item">
           <span class="task-form__key">策略版本</span>
@@ -276,6 +352,16 @@ async function handleSubmit(): Promise<void> {
 </template>
 
 <style scoped>
+.task-form__params {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.task-form__params :deep(.el-input-number) {
+  width: 100%;
+}
+
 .task-form__preview {
   padding: 14px 16px;
   background: var(--color-bg);
