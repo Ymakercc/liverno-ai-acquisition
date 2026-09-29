@@ -1,0 +1,114 @@
+/**
+ * Element Plus 主题映射
+ * 说明（CLAUDE.md 5.0）：Element Plus 是组件库，KULON 深绿是视觉主题。
+ * 主题只能有一个来源 —— 通过覆盖 Element Plus CSS 变量实现，
+ * 禁止在业务组件内用深度选择器逐个改色。
+ *
+ * 注意：这里使用 body 选择器而非 :root，
+ * 目的是让覆盖值不依赖样式表加载顺序即可稳定生效（变量继承 > 样式表顺序）。
+ */
+body {
+  /* 主色 = KULON 深绿，禁止改回蓝色（CLAUDE.md 7.3） */
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: #3a7d72;
+  --el-color-primary-light-5: #68998f;
+  --el-color-primary-light-7: #9ebbb5;
+  --el-color-primary-light-8: #cddcd9;
+  --el-color-primary-light-9: var(--color-primary-bg);
+  --el-color-primary-dark-2: var(--color-primary-active);
+
+  --el-color-success: var(--color-success);
+  --el-color-warning: var(--color-warning);
+  --el-color-danger: var(--color-danger);
+  --el-color-error: var(--color-danger);
+  --el-color-info: var(--color-info);
+
+  --el-text-color-primary: var(--color-text-primary);
+  --el-text-color-regular: var(--color-text-primary);
+  --el-text-color-secondary: var(--color-text-secondary);
+  --el-text-color-placeholder: var(--color-text-placeholder);
+
+  --el-border-color: var(--color-border);
+  --el-border-color-light: var(--color-border);
+  --el-border-color-lighter: var(--color-border-light);
+  --el-border-radius-base: var(--radius-base);
+
+  --el-bg-color: var(--color-card);
+  --el-bg-color-page: var(--color-bg);
+
+  --el-font-family: var(--font-family);
+  --el-font-size-base: var(--font-size-base);
+
+  --el-box-shadow-light: var(--shadow-card);
+}
+
+/* -------------------------------------------------------------------------- */
+/* 动态服务组件主题适配（全局 UI 基础设施）                                     */
+/* 保持 Element Plus 原生结构，只对容器尺寸、圆角、阴影做 Design Token 对齐。   */
+/* 业务页面不得再单独覆写这些样式。                                             */
+/* -------------------------------------------------------------------------- */
+
+.el-message-box {
+  --el-messagebox-width: 440px;
+
+  width: var(--el-messagebox-width);
+  max-width: calc(100vw - 32px);
+  padding: 20px 24px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popper);
+}
+
+.el-message-box__header {
+  padding: 0 0 12px;
+}
+
+.el-message-box__title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.el-message-box__content {
+  padding: 0;
+  font-size: var(--font-size-base);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.el-message-box__container {
+  align-items: flex-start;
+}
+
+.el-message-box__status {
+  top: 2px;
+  font-size: 20px;
+}
+
+/* 按钮右下角排列 */
+.el-message-box__btns {
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 18px 0 0;
+}
+
+.el-message-box__headerbtn {
+  top: 18px;
+  right: 20px;
+}
+
+/* 轻提示与通知：与卡片保持同一套圆角与阴影 */
+.el-message {
+  border-radius: var(--radius-base);
+  box-shadow: var(--shadow-popper);
+}
+
+.el-notification {
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-popper);
+}
+
+/* 全屏 Loading 遮罩与页面背景一致 */
+.el-loading-mask {
+  background-color: rgb(255 255 255 / 80%);
+}

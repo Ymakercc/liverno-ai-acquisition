@@ -1,0 +1,58 @@
+/* 全局样式入口：Token → Element 主题 → 基础重置 */
+@import './tokens.css';
+@import './element-theme.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 表格与统计数字等宽对齐 */
+table,
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d3dade;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #bcc5cb;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 通用卡片：留白充足、浅边框、极轻阴影 */
+.app-card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
