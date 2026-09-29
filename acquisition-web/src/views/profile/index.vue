@@ -208,7 +208,8 @@ async function toggleStatus(row: CustomerProfile): Promise<void> {
   }
 
   try {
-    await updateProfileStatus(row.id, { is_enabled: nextEnabled })
+    const updated = await updateProfileStatus(row.id, { is_enabled: nextEnabled })
+    Object.assign(row, updated)
     ElMessage.success(`已${action}`)
     refreshAll()
   } catch (err) {
@@ -588,6 +589,7 @@ onBeforeUnmount(() => {
                   查看
                 </el-button>
                 <el-dropdown
+                  :key="`${asProfile(row).id}-${asProfile(row).is_enabled ? 'enabled' : 'disabled'}`"
                   trigger="click"
                   @command="(command: string) => handleCommand(command, asProfile(row))"
                 >

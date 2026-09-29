@@ -60,6 +60,10 @@ const isGenerating = computed<boolean>(() => phase.value === 'generating')
 /** 重新生成 / 对已有策略再次生成时，展示的是未落库的新版本预览 */
 const isPreview = computed<boolean>(() => props.mode !== 'edit')
 
+function clonePlain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 /**
  * 未保存标记
  * 统一维护一个 dirty 状态，不依赖 DOM 或逐字段临时比对：
@@ -112,20 +116,20 @@ async function bootstrap(): Promise<void> {
       await loadProfile(props.profileId)
       const result = await generateStrategy({ profile_id: props.profileId })
       strategy.value = result
-      channels.value = structuredClone(result.channel_strategies)
+      channels.value = clonePlain(result.channel_strategies)
     } else if (props.mode === 'regenerate') {
       if (!props.strategyId) throw new Error('缺少策略 ID')
       phase.value = 'generating'
       const result = await regenerateStrategy(props.strategyId)
       strategy.value = result
-      channels.value = structuredClone(result.channel_strategies)
+      channels.value = clonePlain(result.channel_strategies)
       await loadProfile(result.profile_id)
     } else {
       if (!props.strategyId) throw new Error('缺少策略 ID')
       phase.value = 'loading'
       const result = await fetchStrategy(props.strategyId)
       strategy.value = result
-      channels.value = structuredClone(result.channel_strategies)
+      channels.value = clonePlain(result.channel_strategies)
       await loadProfile(result.profile_id)
     }
     phase.value = 'ready'

@@ -53,6 +53,10 @@ const form = reactive<ProfilePayload>(emptyForm())
 const isEdit = computed<boolean>(() => !!props.profile)
 const title = computed<string>(() => (isEdit.value ? '编辑客户画像' : '新建客户画像'))
 
+function clonePlain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
 const rules: FormRules = {
   profile_name: [
     { required: true, message: '请输入画像名称', trigger: 'blur' },
@@ -77,7 +81,7 @@ watch(
   (visible) => {
     if (!visible) return
     const source = props.profile
-    Object.assign(form, source ? structuredClone(toPayload(source)) : emptyForm())
+    Object.assign(form, source ? clonePlain(toPayload(source)) : emptyForm())
     if (!form.required_signals.length) form.required_signals = ['']
     if (!form.exclude_signals.length) form.exclude_signals = ['']
     formRef.value?.clearValidate()

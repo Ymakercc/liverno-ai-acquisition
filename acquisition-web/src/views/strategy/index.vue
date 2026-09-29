@@ -312,7 +312,8 @@ async function toggleStatus(row: SearchStrategy): Promise<void> {
   }
 
   try {
-    await updateStrategyStatus(row.id, { status: nextStatus })
+    const updated = await updateStrategyStatus(row.id, { status: nextStatus })
+    Object.assign(row, updated)
     ElMessage.success(`已${action}`)
     refreshAll()
   } catch (err) {
@@ -640,6 +641,7 @@ onBeforeUnmount(() => {
                   查看
                 </el-button>
                 <el-dropdown
+                  :key="`${asStrategy(row).id}-${asStrategy(row).status}`"
                   trigger="click"
                   @command="(command: string) => handleCommand(command, asStrategy(row))"
                 >
