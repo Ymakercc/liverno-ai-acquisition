@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     serper_base_url: str = "https://google.serper.dev"
     serper_timeout_seconds: float = 30.0
 
+    marketing_base_url: str = "http://127.0.0.1:8787"
+    marketing_automation_token: str = ""
+    marketing_timeout_seconds: float = 8.0
+
     @property
     def database_url(self) -> URL:
         """URL.create 会自行转义密码中的特殊字符。"""

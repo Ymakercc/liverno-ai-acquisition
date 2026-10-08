@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchCompany, reanalyzeCompany } from '@/api/company'
+import { fetchCompany, fetchCompanyResearch, reanalyzeCompany } from '@/api/company'
+import { ApiError } from '@/api/request'
 import {
   CHANNEL_OPTIONS,
   COMPANY_TYPE_OPTIONS,
@@ -11,6 +12,7 @@ import {
   labelOf
 } from '@/mock/dict'
 import type { Enterprise, RelevanceFilter } from '@/types/company'
+import type { ResearchDetail } from '@/types/research'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,8 +26,54 @@ const company = ref<Enterprise | null>(null)
 const loading = ref(true)
 const error = ref(false)
 const analyzing = ref(false)
+const research = ref<ResearchDetail | null>(null)
+const researchLoading = ref(true)
+const researchError = ref('')
 
 let controller: AbortController | null = null
+let researchController: AbortController | null = null
+
+const researchStatusLabels: Record<string, string> = {
+  not_started: '未开始', received: '已接收', researching: '背调中',
+  company_matched: '已匹配企业', completed: '已完成', no_contact: '暂无合适联系人',
+  company_not_found: '未找到企业', failed: '失败',
+  researching_website: '网站研究中', qualifying: 'AI 判断中',
+  fetched: '已获取', empty: '无内容', missing: '无网站',
+  qualified: '精准客户', not_qualified: '不精准', review_required: '待人工复核'
+}
+
+function statusLabel(status: string): string {
+  return researchStatusLabels[status] ?? status
+}
+
+function safeUrl(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  try {
+    const url = new URL(value)
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : undefined
+  } catch {
+    return undefined
+  }
+}
+
+async function loadResearch(): Promise<void> {
+  researchController?.abort()
+  const currentController = new AbortController()
+  researchController = currentController
+  researchLoading.value = true
+  researchError.value = ''
+  try {
+    research.value = await fetchCompanyResearch(companyId, currentController.signal)
+  } catch (err) {
+    if (currentController.signal.aborted) return
+    research.value = null
+    const code = err instanceof ApiError ? err.code : ''
+    researchError.value = code === 'service_unavailable' ? '背调服务暂不可用' :
+      code === 'upstream_auth_error' ? '背调服务认证失败' : '背调数据读取失败'
+  } finally {
+    if (!currentController.signal.aborted) researchLoading.value = false
+  }
+}
 
 async function loadCompany(): Promise<void> {
   controller?.abort()
@@ -89,8 +137,14 @@ function goList(): void {
   router.push('/companies')
 }
 
-onMounted(loadCompany)
-onBeforeUnmount(() => controller?.abort())
+onMounted(() => {
+  void loadCompany()
+  void loadResearch()
+})
+onBeforeUnmount(() => {
+  controller?.abort()
+  researchController?.abort()
+})
 </script>
 
 <template>
@@ -169,7 +223,7 @@ onBeforeUnmount(() => controller?.abort())
             :column="1"
             border
           >
-            <el-descriptions-item label="企业名称">
+            <el-descriptions-item label="发现名称">
               {{ company.company_name }}
             </el-descriptions-item>
             <el-descriptions-item label="标准化名称">
@@ -290,6 +344,201 @@ onBeforeUnmount(() => controller?.abort())
         </section>
       </div>
 
+      <section class="company-detail__block app-card research-detail">
+        <header class="company-detail__section-head">
+          <h3 class="company-detail__section-title">
+            客户背调与 AI 判断
+          </h3>
+          <span
+            v-if="research && !researchLoading"
+            class="company-detail__section-sub"
+          >
+            Research: {{ statusLabel(research.status) }}
+          </span>
+        </header>
+
+        <el-skeleton
+          v-if="researchLoading"
+          :rows="5"
+          animated
+        />
+        <el-result
+          v-else-if="researchError"
+          icon="warning"
+          :title="researchError"
+        >
+          <template #extra>
+            <el-button @click="loadResearch">
+              重试
+            </el-button>
+          </template>
+        </el-result>
+        <el-empty
+          v-else-if="!research || research.status === 'not_started'"
+          description="尚未开始客户背调"
+          :image-size="70"
+        />
+        <div
+          v-else
+          class="research-detail__grid"
+        >
+          <div class="research-detail__group">
+            <h4>Apollo 企业背调</h4>
+            <el-descriptions
+              :column="1"
+              border
+            >
+              <el-descriptions-item label="背调企业">
+                {{ research.company?.apollo_name || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="发现名称">
+                {{ company.company_name }}
+              </el-descriptions-item>
+              <el-descriptions-item label="Apollo 域名">
+                {{ research.company?.domain || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="匹配分数">
+                {{ research.company?.match_score ?? '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="国家">
+                {{ research.company?.country || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="行业">
+                {{ research.company?.industry || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="员工数">
+                {{ research.company?.employee_count ?? '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="LinkedIn">
+                <a
+                  v-if="safeUrl(research.company?.linkedin_url)"
+                  :href="safeUrl(research.company?.linkedin_url)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="company-detail__link"
+                >查看公司主页</a>
+                <span v-else>-</span>
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+
+          <div class="research-detail__group">
+            <h4>联系人摘要 <span class="company-detail__section-sub">{{ research.contacts.length }} 条</span></h4>
+            <el-table
+              class="research-detail__contacts-table"
+              :data="research.contacts"
+              stripe
+            >
+              <el-table-column
+                prop="title"
+                label="职位"
+                min-width="150"
+              >
+                <template #default="{ row }">
+                  {{ row.title || '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column
+                label="有邮箱"
+                width="90"
+              >
+                <template #default="{ row }">
+                  {{ row.has_email ? '是' : '否' }}
+                </template>
+              </el-table-column>
+              <el-table-column
+                prop="email_status"
+                label="邮箱状态"
+                min-width="110"
+              >
+                <template #default="{ row }">
+                  {{ row.email_status || '-' }}
+                </template>
+              </el-table-column>
+              <template #empty>
+                <el-empty
+                  description="暂无联系人摘要"
+                  :image-size="55"
+                />
+              </template>
+            </el-table>
+            <div class="research-detail__contacts-mobile">
+              <div
+                v-for="(contact, index) in research.contacts"
+                :key="index"
+                class="research-detail__contact"
+              >
+                <div><strong>职位</strong><span>{{ contact.title || '-' }}</span></div>
+                <div><strong>有邮箱</strong><span>{{ contact.has_email ? '是' : '否' }}</span></div>
+                <div><strong>邮箱状态</strong><span>{{ contact.email_status || '-' }}</span></div>
+              </div>
+              <el-empty
+                v-if="!research.contacts.length"
+                description="暂无联系人摘要"
+                :image-size="55"
+              />
+            </div>
+          </div>
+
+          <div class="research-detail__group">
+            <h4>Website Research <span class="company-detail__section-sub">{{ statusLabel(research.website_research.status) }}</span></h4>
+            <el-descriptions
+              :column="1"
+              border
+            >
+              <el-descriptions-item label="最终地址">
+                <a
+                  v-if="safeUrl(research.website_research.final_url)"
+                  :href="safeUrl(research.website_research.final_url)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="company-detail__link"
+                >{{ research.website_research.final_url }}</a>
+                <span v-else>{{ research.website_research.final_url || '-' }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="标题">
+                {{ research.website_research.title || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="描述">
+                {{ research.website_research.description || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="信号">
+                <div>MEAN WELL：{{ research.website_research.signals.meanWellMentioned ? '是' : '否' }}</div>
+                <div>直接匹配：{{ research.website_research.signals.directFit ? '是' : '否' }}</div>
+                <div>命中词：{{ research.website_research.signals.matchedTerms.join('、') || '-' }}</div>
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+
+          <div class="research-detail__group">
+            <h4>AI Qualification <span class="company-detail__section-sub">{{ statusLabel(research.qualification.status) }}</span></h4>
+            <el-descriptions
+              :column="1"
+              border
+            >
+              <el-descriptions-item label="判断原因">
+                {{ research.qualification.reason || research.qualification.failure_reason || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="客户画像">
+                {{ research.qualification.customer_profile || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="推荐产品">
+                <div
+                  v-for="(item, index) in research.qualification.recommended_products"
+                  :key="index"
+                >
+                  {{ item.name }}<span v-if="item.reason">：{{ item.reason }}</span>
+                </div>
+                <span v-if="!research.qualification.recommended_products.length">-</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="风险标记">
+                {{ research.qualification.risk_flags.join('、') || '-' }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+        </div>
+      </section>
+
       <!-- 发现来源 -->
       <section class="company-detail__block app-card">
         <header class="company-detail__section-head">
@@ -370,6 +619,7 @@ onBeforeUnmount(() => controller?.abort())
   display: flex;
   flex-direction: column;
   gap: var(--space-base);
+  min-width: 0;
 }
 
 .company-detail__head {
@@ -408,6 +658,16 @@ onBeforeUnmount(() => controller?.abort())
 
 .company-detail__link {
   color: var(--color-primary);
+  overflow-wrap: anywhere;
+}
+
+.company-detail :deep(.el-descriptions__label) {
+  width: 104px;
+  white-space: nowrap;
+}
+
+.company-detail :deep(.el-descriptions__content) {
+  overflow-wrap: anywhere;
 }
 
 .company-detail__split {
@@ -425,6 +685,81 @@ onBeforeUnmount(() => controller?.abort())
 
 .company-detail__block {
   padding: 18px var(--space-xl) var(--space-xl);
+}
+
+.research-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.research-detail__group {
+  min-width: 0;
+}
+
+.research-detail__group h4 {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: 0 0 10px;
+  font-size: var(--font-size-sm);
+}
+
+.research-detail__contacts-mobile {
+  display: none;
+}
+
+.research-detail__contact {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.research-detail__contact > div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+  padding: 3px 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-sm);
+}
+
+.research-detail__contact strong {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 900px) {
+  .research-detail__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .company-detail__head {
+    flex-wrap: wrap;
+  }
+
+  .company-detail__head-main {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .company-detail__title-row,
+  .company-detail__meta {
+    flex-wrap: wrap;
+  }
+
+  .company-detail__block {
+    padding: 16px;
+  }
+
+  .research-detail__contacts-table {
+    display: none;
+  }
+
+  .research-detail__contacts-mobile {
+    display: block;
+  }
 }
 
 .company-detail__section-head {

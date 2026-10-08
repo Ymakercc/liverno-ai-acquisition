@@ -21,7 +21,13 @@ export default defineConfig({
     // 只监听本机：外网不可直连，本地通过 SSH 隧道访问
     host: '127.0.0.1',
     port: 5173,
-    strictPort: true
+    strictPort: true,
+    proxy: {
+      '/liver_api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true
+      }
+    }
   },
   build: {
     sourcemap: false,

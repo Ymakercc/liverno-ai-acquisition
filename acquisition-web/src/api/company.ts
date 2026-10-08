@@ -20,6 +20,7 @@ import {
 } from '@/mock/companies'
 import type { PageResult } from '@/types/common'
 import type { CompanyQuery, CompanyStats, Enterprise } from '@/types/company'
+import type { ResearchDetail } from '@/types/research'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 const BASE = '/companies'
@@ -49,6 +50,26 @@ export function fetchCompany(
     params: profileId ? { profile_id: profileId } : undefined,
     signal
   })
+}
+
+/** 单企业背调，只经 Acquisition API 获取；Mock 模式不触发真实服务。 */
+export function fetchCompanyResearch(id: string, signal?: AbortSignal): Promise<ResearchDetail> {
+  if (USE_MOCK) {
+    return Promise.resolve({
+      status: 'not_started',
+      company: null,
+      contacts: [],
+      website_research: {
+        status: 'not_started', final_url: '', title: '', description: '',
+        signals: { meanWellMentioned: false, matchedTerms: [], directFit: false }
+      },
+      qualification: {
+        status: 'not_started', reason: '', reason_code: '', customer_profile: '',
+        recommended_products: [], risk_flags: [], failure_reason: ''
+      }
+    })
+  }
+  return request<ResearchDetail>({ url: `${BASE}/${id}/research`, method: 'GET', signal })
 }
 
 /**
