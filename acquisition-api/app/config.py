@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     marketing_base_url: str = "http://127.0.0.1:8787"
     marketing_automation_token: str = ""
     marketing_timeout_seconds: float = 8.0
+    marketing_step_timeout_seconds: float = 240.0
+    b5_trigger_token: str = ""
 
     @property
     def database_url(self) -> URL:

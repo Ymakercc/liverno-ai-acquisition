@@ -1,4 +1,5 @@
 from app.models.enterprise import Enterprise, EnterpriseDiscoverySource, SearchResult
+from app.models.marketing_handoff import EnterpriseMarketingHandoff
 from app.models.profile import CustomerProfile
 from app.models.strategy import (
     SearchStrategy,
@@ -19,6 +20,7 @@ __all__ = [
     "AcquisitionTaskQueryExecution",
     "AcquisitionTaskSearchResult",
     "Enterprise",
+    "EnterpriseMarketingHandoff",
     "EnterpriseDiscoverySource",
     "SearchStrategy",
     "SearchStrategyVersion",
